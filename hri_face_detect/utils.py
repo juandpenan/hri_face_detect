@@ -1,5 +1,7 @@
-import cv2
+import math
 import numpy as np
+import cv2
+
 
 # face key points
 P3D_RIGHT_EYE = (-20.0, -65.5, -5.0)
@@ -28,3 +30,26 @@ def face_pose_estimation(points_2D, K):
     rmat, jac = cv2.Rodrigues(rot_vec)
     angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
     return trans_vec, angles
+
+def quaternion_from_euler(ai, aj, ak):
+    ai /= 2.0
+    aj /= 2.0
+    ak /= 2.0
+    ci = math.cos(ai)
+    si = math.sin(ai)
+    cj = math.cos(aj)
+    sj = math.sin(aj)
+    ck = math.cos(ak)
+    sk = math.sin(ak)
+    cc = ci*ck
+    cs = ci*sk
+    sc = si*ck
+    ss = si*sk
+
+    q = np.empty((4, ))
+    q[0] = cj*sc - sj*cs
+    q[1] = cj*ss + sj*cc
+    q[2] = cj*cs - sj*sc
+    q[3] = cj*cc + sj*ss
+
+    return q

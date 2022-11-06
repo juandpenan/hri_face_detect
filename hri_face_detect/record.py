@@ -1,5 +1,3 @@
-#! /usr/bin/env python3
-
 import argparse
 import math
 import cv2
@@ -295,8 +293,7 @@ class FaceRecorder:
             elif key == 27:
                 break
 
-
-if __name__ == "__main__":
+def main():
 
     parser = argparse.ArgumentParser(
         description="Record faces for pre-training face recognition"
@@ -325,3 +322,8 @@ if __name__ == "__main__":
     detector = FaceRecorder(person_name, args.path)
 
     detector.run()
+
+if __name__ == "__main__":
+
+    main()
+

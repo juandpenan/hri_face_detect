@@ -1,28 +1,27 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
   <name>hri_face_detect</name>
-  <version>1.4.4</version>
-  <description>Google Mediapipe-based face detection for ROS4HRI</description>
+  <version>0.0.0</version>
+  <description>TODO: Package description</description>
+  <maintainer email="juan97pena@gmail.com">juan</maintainer>
+  <license>TODO: License declaration</license>
 
-  <maintainer email="severin.lemaignan@pal-robotics.com">Séverin Lemaignan</maintainer>
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
 
-  <license>BSD</license>
-
-  <author email="severin.lemaignan@pal-robotics.com">Séverin Lemaignan</author>
-
-  <buildtool_depend>catkin</buildtool_depend>
-  <exec_depend>rospy</exec_depend>
+  <exec_depend>python3-pytest</exec_depend>
+  <exec_depend>rclpy</exec_depend>
   <exec_depend>python-mediapipe</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>hri_msgs</exec_depend>
-  <exec_depend>tf</exec_depend>
-  <exec_depend>tf_conversions</exec_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
 
-
-  <!-- The export tag contains other, unspecified, tags -->
   <export>
-    <!-- Other tools can request additional information be placed here -->
-
+    <build_type>ament_python</build_type>
   </export>
 </package>

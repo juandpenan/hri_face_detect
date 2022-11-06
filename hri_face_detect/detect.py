@@ -1,21 +1,17 @@
-#! /usr/bin/env python3
-
-import tf
+from tf2_ros import TransformBroadcaster
+from .utils import quaternion_from_euler, face_pose_estimation
 from hri_msgs.msg import IdsList, FacialLandmarks, NormalizedPointOfInterest2D
 from sensor_msgs.msg import Image, CameraInfo, RegionOfInterest
 from geometry_msgs.msg import Transform, TransformStamped, Vector3, Quaternion
 from std_msgs.msg import Empty, Header
-import tf_conversions.posemath as pm
 from cv_bridge import CvBridge
-import rospy
+import rclpy
+from rclpy.node import Node
 import math
 import random
 import cv2
 from PIL import Image as PILImage
 import numpy as np
-from tf.transformations import quaternion_from_euler
-from hri_face_detect.face_pose_estimation import face_pose_estimation
-
 import mediapipe as mp
 
 mp_face_detection = mp.solutions.face_detection
@@ -142,11 +138,25 @@ def normalized_to_pixel_coordinates(
     return x_px, y_px
 
 
-class Face:
+class Face(Node):
 
     last_id = 0
 
     def __init__(self, deterministic_id=False):
+        super().__init__('hri_face_detect')
+
+        self.declare_parameter('/humans/faces/width', 128)
+        self.declare_parameter('/humans/faces/height', 128)
+
+        cropped_face_width = self.get_parameter('/humans/faces/width').get_parameter_value()
+        cropped_face_height = self.get_parameter('/humans/faces/height').get_parameter_value()
+        
+        if cropped_face_height != cropped_face_width:
+            self.get_logger.error(
+                "The /humans/faces/width and /humans/faces/height must be equal. Continuing with width = height = %spx"
+                % cropped_face_width
+            )
+        cropped_face_height = cropped_face_width
 
         # generate unique ID
         if deterministic_id:
@@ -192,37 +202,38 @@ class Face:
         if self.ready:
             return
 
-        self.roi_pub = rospy.Publisher(
-            "/humans/faces/%s/roi" % self.id,
+        self.roi_pub = self.create_publisher(
             RegionOfInterest,
-            queue_size=1,
+            "/humans/faces/%s/roi" % self.id,            
+            1,
         )
 
-        self.cropped_pub = rospy.Publisher(
-            "/humans/faces/%s/cropped" % self.id,
+        self.cropped_pub = self.create_publisher(
             Image,
-            queue_size=1,
+            "/humans/faces/%s/cropped" % self.id,            
+            1,
         )
 
-        self.aligned_pub = rospy.Publisher(
-            "/humans/faces/%s/aligned" % self.id,
+        self.aligned_pub = self.create_publisher(
             Image,
-            queue_size=1,
+            "/humans/faces/%s/aligned" % self.id,            
+            1,
         )
 
-        self.landmarks_pub = rospy.Publisher(
-            "/humans/faces/%s/landmarks" % self.id,
+        self.landmarks_pub = self.create_publisher(
             FacialLandmarks,
-            queue_size=1,
+            "/humans/faces/%s/landmarks" % self.id,            
+            1,
         )
+        self.get_logger().info('New face: %s' % self)
 
-        rospy.loginfo("New face: %s" % self)
+
         self.ready = True
 
     def publish(self):
 
         if not self.ready:
-            rospy.logerr(
+            self.get_logger().error(
                 "Trying to publish face information but publishers have not been created yet!"
             )
             return
@@ -233,7 +244,7 @@ class Face:
     def publish_images(self, src_image):
 
         if not self.ready:
-            rospy.logerr(
+            self.get_logger().error(
                 "Trying to publish face images but publishers have not been created yet!"
             )
             return
@@ -393,7 +404,7 @@ class Face:
 
         # calculating angle
         self.head_transform = TransformStamped(
-            Header(0, rospy.Time.now(), camera_optical_frame),
+            Header(0, self.get_clock().now(), camera_optical_frame),
             "face_" + self.id,
             Transform(
                 Vector3(
@@ -401,8 +412,9 @@ class Face:
                     trans_vec[1] / 1000,
                     trans_vec[2] / 1000,
                 ),
+                #TODO check *
                 Quaternion(
-                    *tf.transformations.quaternion_from_euler(
+                    *quaternion_from_euler(
                         angles[0] / 180 * np.pi,
                         angles[1] / 180 * np.pi,
                         angles[2] / 180 * np.pi,
@@ -412,12 +424,13 @@ class Face:
         )
 
         self.gaze_transform = TransformStamped(
-            Header(0, rospy.Time.now(), "face_" + self.id),
+            Header(0, self.get_clock().now(), "face_" + self.id),
             "gaze_" + self.id,
             Transform(
                 Vector3(0, 0, 0),
+                #TODO check *
                 Quaternion(
-                    *tf.transformations.quaternion_from_euler(-np.pi / 2, 0, -np.pi / 2)
+                    *quaternion_from_euler(-np.pi / 2, 0, -np.pi / 2)
                 ),
             ),
         )
@@ -427,15 +440,15 @@ class Face:
         if not self.ready:
             return
 
-        rospy.loginfo(
+        self.get_logger().info(
             "Face [%s] lost. It remained visible for %s frames"
             % (self, self.nb_frames_visible)
         )
-
-        self.roi_pub.unregister()
-        self.cropped_pub.unregister()
-        self.aligned_pub.unregister()
-        self.landmarks_pub.unregister()
+        ##TODO check destroy method
+        self.roi_pub.destroy()
+        self.cropped_pub.destroy()
+        self.aligned_pub.destroy()
+        self.landmarks_pub.destroy()
 
         self.ready = False
 
@@ -656,26 +669,46 @@ class FaceDetector:
         return "Google mediapipe face detector"
 
 
-class RosFaceDetector:
+class RosFaceDetector(Node):
     def __init__(self, debug=False, face_mesh=True, max_num_faces=4):
+        super().__init__('hri_face_detect')
+
+
+        self.declare_parameter('~debug', False)
+        self.declare_parameter('~face_mesh', False)
+        self.declare_parameter("~max_num_faces", 4)
+
+        max_num_faces = self.get_parameter('~max_num_faces').get_parameter_value().integer_value
 
         self.is_shutting_down = False
-        self.debug = debug
-        self.face_mesh = face_mesh
-
-        semaphore_pub = rospy.Publisher(
-            "/hri_face_detect/ready", Empty, queue_size=1, latch=True
-        )
-        self.faces_pub = rospy.Publisher("/humans/faces/tracked", IdsList, queue_size=1)
+        self.debug = debug = self.get_parameter('~debug').get_parameter_value().bool_value
+        self.face_mesh = face_mesh = self.get_parameter('~face_mesh').get_parameter_value().bool_value
+ 
+        semaphore_pub = self.create_publisher(
+            Empty,
+            "/hri_face_detect/ready",
+             1
+            )
+        self.faces_pub = self.create_publisher(
+            IdsList,
+            "/humans/faces/tracked",             
+             1)
 
         self.facedetector = FaceDetector(face_mesh, max_num_faces)
-        self.image_sub = rospy.Subscriber("image", Image, self.callback)
-        self.image_info_sub = rospy.Subscriber(
-            "camera_info", CameraInfo, self.info_callback
+        self.image_sub = self.create_subscription(
+            Image,
+            "image",
+            self.callback,
+            10)
+        self.image_info_sub = self.create_subscription(
+             CameraInfo,
+             "camera_info",
+             self.info_callback,
+             10
         )
 
-        rospy.loginfo(
-            "Ready. Waiting for images to be published on %s." % self.image_sub.name
+        self.get_logger().info(
+            "Ready. Waiting for images to be published on %s." % self.image_sub.topic
         )
         semaphore_pub.publish(Empty())
 
@@ -685,7 +718,7 @@ class RosFaceDetector:
         # list (map ID -> Face) of Face instances, corresponding to the currently tracked faces
         self.knownFaces = {}
 
-        self.tb = tf.TransformBroadcaster()
+        self.tb = TransformBroadcaster(self)
 
     def distance_rois(self, bb1, bb2):
         x1, y1 = bb1.x_offset + bb1.width / 2, bb1.y_offset + bb1.height / 2
@@ -794,8 +827,8 @@ class RosFaceDetector:
                     if hasattr(self, "K"):
                         face.compute_6d_pose(self.K, image, camera_optical_frame)
 
-                        self.tb.sendTransformMessage(face.head_transform)
-                        self.tb.sendTransformMessage(face.gaze_transform)
+                        self.tb.sendTransform(face.head_transform)
+                        self.tb.sendTransform(face.gaze_transform)
 
         self.faces_pub.publish(
             IdsList(
@@ -807,7 +840,7 @@ class RosFaceDetector:
         if self.debug:
             # Draw the face detection annotations on the image.
             image.flags.writeable = True
-            rospy.loginfo("%s faces detected" % len(self.knownFaces))
+            self.get_logger().info("%s faces detected" % len(self.knownFaces))
             for _, face in self.knownFaces.items():
                 if not face.ready:
                     continue
@@ -835,7 +868,7 @@ class RosFaceDetector:
 
     def close(self):
 
-        rospy.loginfo("Stopping face publishing...")
+        self.get_logger().info("Stopping face publishing...")
 
         self.is_shutting_down = True
 
@@ -843,36 +876,26 @@ class RosFaceDetector:
             face.delete()
 
         h = Header()
-        h.stamp = rospy.Time.now()
-        self.faces_pub.publish(IdsList(h, []))
-
-        rospy.loginfo("Stopped publishing faces.")
-
-        rospy.sleep(
-            0.1
-        )  # ensure the last messages published in this method (detector.close) are effectively sent.
-
+        h.stamp = self.get_clock().now().to_msg()
+        ids_list = IdsList()
+        ids_list.header = h
+        ids_list.ids = []
+        self.faces_pub.publish(ids_list)
+        self.get_logger().info("Stopped publishing faces.")
+        rate= self.create_rate(10)
+        rate.sleep()
+        rate.destroy()
+        
+    
+def main(args=None):
+    rclpy.init(args=args)
+    # rospy.init_node("hri_face_detect")
+    detector = RosFaceDetector()
+    # detector = RosFaceDetector(debug, face_mesh, max_num_faces)
+    #rclpy.context.Context().on_shutdown(detector.close())
+    rclpy.spin(detector)
 
 if __name__ == "__main__":
-    rospy.init_node("hri_face_detect")
 
-    cropped_face_width = rospy.get_param("/humans/faces/width", cropped_face_width)
-    cropped_face_height = rospy.get_param("/humans/faces/height", cropped_face_height)
-
-    if cropped_face_height != cropped_face_width:
-        rospy.logerr(
-            "The /humans/faces/width and /humans/faces/height must be equal. Continuing with width = height = %spx"
-            % cropped_face_width
-        )
-        cropped_face_height = cropped_face_width
-
-    debug = rospy.get_param("~debug", False)
-
-    face_mesh = rospy.get_param("~face_mesh", True)
-    max_num_faces = rospy.get_param("~max_num_faces", 4)
-
-    detector = RosFaceDetector(debug, face_mesh, max_num_faces)
-
-    rospy.on_shutdown(detector.close)
-
-    rospy.spin()
+    main()
+    
