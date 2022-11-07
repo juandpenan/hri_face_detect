@@ -255,9 +255,10 @@ class Face(Node):
     def publish_cropped_face(self, src_image):
 
         # no-one interested in the face image? skip it!
-        if self.cropped_pub.get_num_connections() == 0:
+        
+        if self.cropped_pub.get_subscription_count() == 0:
             return
-
+   
         roi = src_image[
             self.bb.y_offset : self.bb.y_offset + self.bb.height,
             self.bb.x_offset : self.bb.x_offset + self.bb.width,
@@ -289,7 +290,7 @@ class Face(Node):
         """
 
         # no-one interested in the face image? skip it!
-        if self.aligned_pub.get_num_connections() == 0:
+        if self.aligned_pub.get_subscription_count() == 0:
             return
 
         img_height, img_width, _ = src_image.shape
@@ -403,37 +404,43 @@ class Face(Node):
         trans_vec, angles = face_pose_estimation(points_2D, K)
 
         # calculating angle
-        self.head_transform = TransformStamped(
-            Header(0, self.get_clock().now(), camera_optical_frame),
-            "face_" + self.id,
-            Transform(
-                Vector3(
-                    trans_vec[0] / 1000,
-                    trans_vec[1] / 1000,
-                    trans_vec[2] / 1000,
-                ),
-                #TODO check *
-                Quaternion(
-                    *quaternion_from_euler(
+        self.head_transform  = TransformStamped()
+        self.head_transform.header.stamp = self.get_clock().now().to_msg()
+        self.head_transform.header.frame_id = camera_optical_frame
+        self.head_transform.child_frame_id = "face_" + self.id
+        self.head_transform.transform.translation.x = trans_vec[0] / 1000
+        self.head_transform.transform.translation.y = trans_vec[1] / 1000
+        self.head_transform.transform.translation.z = trans_vec[2] / 1000 
+        q = quaternion_from_euler(
                         angles[0] / 180 * np.pi,
                         angles[1] / 180 * np.pi,
                         angles[2] / 180 * np.pi,
                     )
-                ),
-            ),
-        )
+        self.head_transform.transform.rotation.x = q[0]
+        self.head_transform.transform.rotation.y = q[1]
+        self.head_transform.transform.rotation.z = q[2]
+        self.head_transform.transform.rotation.w = q[3]
+        
 
-        self.gaze_transform = TransformStamped(
-            Header(0, self.get_clock().now(), "face_" + self.id),
-            "gaze_" + self.id,
-            Transform(
-                Vector3(0, 0, 0),
-                #TODO check *
-                Quaternion(
-                    *quaternion_from_euler(-np.pi / 2, 0, -np.pi / 2)
-                ),
-            ),
-        )
+        self.gaze_transform = TransformStamped()
+        self.gaze_transform.header.stamp = self.get_clock().now().to_msg()
+        self.gaze_transform.header.frame_id = "face_" + self.id
+        self.gaze_transform.child_frame_id = "gaze_" + self.id
+        self.gaze_transform.transform.translation.x = 0.0
+        self.gaze_transform.transform.translation.y = 0.0
+        self.gaze_transform.transform.translation.z = 0.0
+        q = quaternion_from_euler(
+                        -np.pi/2,
+                        0,
+                        -np.pi/2,
+                    )
+        self.gaze_transform.transform.rotation.x = q[0]
+        self.gaze_transform.transform.rotation.y = q[1]
+        self.gaze_transform.transform.rotation.z = q[2]
+        self.gaze_transform.transform.rotation.w = q[3]
+
+
+
 
     def delete(self):
 
@@ -510,86 +517,93 @@ class FaceDetector:
 
             face["bb"] = self.get_boundingbox(detection, img_cols, img_rows)
 
-            landmarks = FacialLandmarks(
-                landmarks = [NormalizedPointOfInterest2D(0, 0, 1) for _ in range(70)],
-                height = img_height,
-                width = img_width,
-            )
+            landmarks = FacialLandmarks()
+            points_of_interest = NormalizedPointOfInterest2D()
+            points_of_interest.x = 0.0                                          
+            points_of_interest.y = 0.0
+            points_of_interest.c = 1.0
+            landmarks.landmarks = [points_of_interest  for _ in range(70)]
+            landmarks.height = img_height
+            landmarks.width = img_width
+
 
             nose_tip = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.NOSE_TIP
             )
             face["nose_tip"] = (nose_tip.x, nose_tip.y)
 
-            landmarks.landmarks[FacialLandmarks.NOSE] = NormalizedPointOfInterest2D(
-                int(min(nose_tip.x * img_width, img_width)),
-                int(min(nose_tip.y * img_height, img_height)),
-                1,
-            )
+            nose_points = NormalizedPointOfInterest2D()
+            nose_points.x = min(nose_tip.x * img_width, img_width)
+            nose_points.y = min(nose_tip.y * img_height, img_height)
+            nose_points.c = 1.0
+
+            landmarks.landmarks[FacialLandmarks.NOSE] = nose_points
 
             right_eye = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.RIGHT_EYE
             )
             face["right_eye"] = (right_eye.x, right_eye.y)
-
+            right_eye_points = NormalizedPointOfInterest2D()
+            right_eye_points.x = min(right_eye.x * img_width, img_width)
+            right_eye_points.y = min(right_eye.y * img_height, img_height)
+            right_eye_points.c = 1.0
             landmarks.landmarks[
                 FacialLandmarks.RIGHT_PUPIL
-            ] = NormalizedPointOfInterest2D(
-                int(min(right_eye.x * img_width, img_width)),
-                int(min(right_eye.y * img_height, img_height)),
-                1,
-            )
+            ] = right_eye_points
 
             left_eye = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.LEFT_EYE
             )
             face["left_eye"] = (left_eye.x, left_eye.y)
 
+            left_eye_points = NormalizedPointOfInterest2D()
+            left_eye_points.x = min(left_eye.x * img_width, img_width)
+            left_eye_points.y = min(left_eye.y * img_height, img_height)
+            left_eye_points.c = 1.0
+            
             landmarks.landmarks[
                 FacialLandmarks.LEFT_PUPIL
-            ] = NormalizedPointOfInterest2D(
-                int(min(left_eye.x * img_width, img_width)),
-                int(min(left_eye.y * img_height, img_height)),
-                1,
-            )
+            ] = left_eye_points
 
             mouth_center = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.MOUTH_CENTER
             )
             face["mouth_center"] = (mouth_center.x, mouth_center.y)
 
+            mouth_points = NormalizedPointOfInterest2D()
+            mouth_points.x = min(mouth_center.x * img_width, img_width)
+            mouth_points.y = min(mouth_center.y * img_height, img_height)
+            mouth_points.c = 1.0
+
             landmarks.landmarks[
                 FacialLandmarks.MOUTH_INNER_TOP_2
-            ] = NormalizedPointOfInterest2D(
-                int(min(mouth_center.x * img_width, img_width)),
-                int(min(mouth_center.y * img_height, img_height)),
-                1,
-            )
+            ] = mouth_points 
 
             right_ear_tragion = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.RIGHT_EAR_TRAGION
             )
             face["right_ear_tragion"] = (right_ear_tragion.x, right_ear_tragion.y)
 
+            right_ear_points = NormalizedPointOfInterest2D()
+            right_ear_points.x = min(right_ear_tragion.x * img_width, img_width)
+            right_eye_points.y = min(right_ear_tragion.y * img_height, img_height)
+            right_eye_points.c = 1.0
+
             landmarks.landmarks[
                 FacialLandmarks.RIGHT_EAR
-            ] = NormalizedPointOfInterest2D(
-                int(min(right_ear_tragion.x * img_width, img_width)),
-                int(min(right_ear_tragion.y * img_height, img_height)),
-                1,
-            )
+            ] = right_ear_points
 
             left_ear_tragion = mp_face_detection.get_key_point(
                 detection, mp_face_detection.FaceKeyPoint.LEFT_EAR_TRAGION
             )
             face["left_ear_tragion"] = (left_ear_tragion.x, left_ear_tragion.y)
 
-            landmarks.landmarks[FacialLandmarks.LEFT_EAR] = NormalizedPointOfInterest2D(
-                int(min(left_ear_tragion.x * img_width, img_width)),
-                int(min(left_ear_tragion.y * img_height, img_height)),
-                1,
-            )
+            left_ear_points = NormalizedPointOfInterest2D()
+            left_ear_points.x = min(left_ear_tragion.x * img_width, img_width)
+            left_ear_points.y = min(left_ear_tragion.y * img_height, img_height)
+            left_ear_points.c = 1.0
 
+            landmarks.landmarks[FacialLandmarks.LEFT_EAR] = left_ear_points
             face["facial_landmarks_msg"] = landmarks
 
             results.append(face)
@@ -697,12 +711,12 @@ class RosFaceDetector(Node):
         self.facedetector = FaceDetector(face_mesh, max_num_faces)
         self.image_sub = self.create_subscription(
             Image,
-            "image",
+            "/image",
             self.callback,
             10)
         self.image_info_sub = self.create_subscription(
              CameraInfo,
-             "camera_info",
+             "/camera_info",
              self.info_callback,
              10
         )
@@ -743,12 +757,12 @@ class RosFaceDetector(Node):
             self.cameraInfo = cameraInfo
 
             self.K = np.zeros((3, 3), np.float32)
-            self.K[0][0:3] = self.cameraInfo.K[0:3]
-            self.K[1][0:3] = self.cameraInfo.K[3:6]
-            self.K[2][0:3] = self.cameraInfo.K[6:9]
+            self.K[0][0:3] = self.cameraInfo.k[0:3]
+            self.K[1][0:3] = self.cameraInfo.k[3:6]
+            self.K[2][0:3] = self.cameraInfo.k[6:9]
 
     def callback(self, rgb_msg):
-
+        self.get_logger().info("Got into the callback, is_shut: %s"% str(self.is_shutting_down))
         if self.is_shutting_down:
             return
 
@@ -771,13 +785,13 @@ class RosFaceDetector(Node):
 
         for detection in detections:
             x, y, w, h = detection["bb"]
-            bb = RegionOfInterest(
-                max(0, x),
-                max(0, y),
-                min(img_height - y, h),
-                min(img_width - x, w),
-                True,
-            )
+            bb = RegionOfInterest()
+            bb.x_offset = max(0, x)
+            bb.y_offset =  max(0, y)
+            bb.width =  min(img_height - y, h)
+            bb.height = min(img_width - x, w)
+            bb.do_rectify = True
+
 
             # have we seen this face before? -> check based on whether or not
             # bounding boxes overlaps
@@ -829,13 +843,11 @@ class RosFaceDetector(Node):
 
                         self.tb.sendTransform(face.head_transform)
                         self.tb.sendTransform(face.gaze_transform)
-
-        self.faces_pub.publish(
-            IdsList(
-                rgb_msg.header,
-                [face.id for face in self.knownFaces.values() if face.ready],
-            )
-        )
+        faces_msg = IdsList()
+        faces_msg.header = rgb_msg.header
+        faces_msg.ids = [face.id for face in self.knownFaces.values() if face.ready]
+        self.faces_pub.publish(faces_msg)
+        faces_msg = None
 
         if self.debug:
             # Draw the face detection annotations on the image.
