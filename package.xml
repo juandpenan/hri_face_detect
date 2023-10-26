@@ -14,7 +14,9 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>python3-pytest</exec_depend>  
-  <exec_depend>python-mediapipe</exec_depend>
+  <exec_depend>mediapipe</exec_depend>
+  <exec_depend>python3-tk</exec_depend>
+  
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>hri_msgs</exec_depend>

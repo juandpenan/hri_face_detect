@@ -12,9 +12,24 @@ P3D_NOSE = (21.0, 0.0, -48.0)
 P3D_STOMION = (10.0, 0.0, -75.0)
 
 
-points_3D = np.array(
-    [P3D_NOSE, P3D_RIGHT_EYE, P3D_LEFT_EYE, P3D_STOMION, P3D_RIGHT_EAR, P3D_LEFT_EAR]
-)
+def normalized_to_pixel_coordinates(
+    normalized_x: float,
+    normalized_y: float,
+    image_width: int,
+    image_height: int,
+):
+
+    x_px = min(math.floor(normalized_x * image_width), image_width - 1)
+    y_px = min(math.floor(normalized_y * image_height), image_height - 1)
+    return x_px, y_px
+
+
+points_3D = np.array([P3D_NOSE,
+                      P3D_RIGHT_EYE,
+                      P3D_LEFT_EYE,
+                      P3D_STOMION,
+                      P3D_RIGHT_EAR,
+                      P3D_LEFT_EAR])
 
 
 def face_pose_estimation(points_2D, K):
@@ -29,7 +44,10 @@ def face_pose_estimation(points_2D, K):
     )
     rmat, jac = cv2.Rodrigues(rot_vec)
     angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
+    if np.isnan(trans_vec).any():
+        trans_vec[:] = 0.0
     return trans_vec, angles
+
 
 def quaternion_from_euler(ai, aj, ak):
     ai /= 2.0
@@ -41,15 +59,15 @@ def quaternion_from_euler(ai, aj, ak):
     sj = math.sin(aj)
     ck = math.cos(ak)
     sk = math.sin(ak)
-    cc = ci*ck
-    cs = ci*sk
-    sc = si*ck
-    ss = si*sk
+    cc = ci * ck
+    cs = ci * sk
+    sc = si * ck
+    ss = si * sk
 
     q = np.empty((4, ))
-    q[0] = cj*sc - sj*cs
-    q[1] = cj*ss + sj*cc
-    q[2] = cj*cs - sj*sc
-    q[3] = cj*cc + sj*ss
+    q[0] = cj * sc - sj * cs
+    q[1] = cj * ss + sj * cc
+    q[2] = cj * cs - sj * sc
+    q[3] = cj * cc + sj * ss
 
     return q

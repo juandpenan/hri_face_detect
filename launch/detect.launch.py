@@ -11,12 +11,14 @@ def generate_launch_description():
             emulate_tty=True,
             parameters=[
                 {'face_mesh': 'earth'},
-                {'max_num_faces': '10'}        
-                 
+                {'max_num_faces': '10'},
+                {'log-level': 'debug'}              
             ],
             remappings=[
-                ('image', '/camera/rgb/image_raw'),
-                ('camera_info', '/camera/rgb/camera_info'),
+                ('image', '/head_front_camera/rgb/image_raw'),
+                ('camera_info', '/head_front_camera/rgb/camera_info'),
+                # ('image', '/image_raw'),
+                # ('camera_info', '/camera_info'),
             ],
         )
     ])
