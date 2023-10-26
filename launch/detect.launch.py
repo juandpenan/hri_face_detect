@@ -4,7 +4,7 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='hri_face_detect',
+            package='hri_body_detect',
             executable='detect',
             name='detect',
             output='screen',

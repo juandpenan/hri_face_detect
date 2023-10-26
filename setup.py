@@ -24,8 +24,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-             'detect = hri_face_detect.detect:main',
-             'record = hri_face_detect.record:main',
+             'detect = hri_body_detect.detect:main',
+             'record = hri_body_detect.record:main',
         ],
     },
 )
